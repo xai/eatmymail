@@ -17,13 +17,13 @@
 # Boston, MA 021110-1307, USA.
 
 import sys
-import os
-import glob
 import mailbox
 import hashlib
 
+
 def print_usage(path):
-    print("Usage: %s [MAILDIR]")
+    print("Usage: %s [MAILDIR]" % path)
+
 
 def hash_content(message):
     if message.is_multipart():
@@ -36,38 +36,39 @@ def hash_content(message):
         content = str(message.get_payload()).encode()
         return hashlib.sha256(content).hexdigest()
 
+
 def remove(mbox, to_remove):
     mbox.lock()
     try:
         for key, hashsum in to_remove.items():
             message = mbox.get(key)
-            print("  deleting \"%s\" (%s bytes, %s)" \
-                    % (message['Subject'], message['Content-Length'], hashsum))
+            print("  deleting \"%s\" (%s bytes, %s)" % (message['Subject'], message['Content-Length'], hashsum))
             mbox.remove(key)
     finally:
         mbox.flush()
         mbox.close()
+
 
 def prune(mbox):
     messages = {}
     to_remove = {}
 
     for key, message in mbox.iteritems():
-        msgid = message['Message-Id']
-        if msgid is None:
+        message_id = message['Message-Id']
+        if message_id is None:
             continue
 
-        if msgid in messages:
-            messages[msgid].append(key)
+        if message_id in messages:
+            messages[message_id].append(key)
         else:
-            messages[msgid] = [key]
+            messages[message_id] = [key]
 
     # Check duplicate message ids
     # this is reasonably fast
-    for msgid in messages:
-        if len(messages[msgid]) > 1:
+    for message_id in messages:
+        if len(messages[message_id]) > 1:
             dupes = {}
-            for key in messages[msgid]:
+            for key in messages[message_id]:
                 message = mbox.get(key)
                 hashsum = hash_content(message)
                 if hashsum in dupes:
@@ -87,6 +88,7 @@ def prune(mbox):
     for subdir in mbox.list_folders():
         print('Subdir found: %s', subdir)
         prune(subdir)
+
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
