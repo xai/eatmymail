@@ -22,6 +22,9 @@ import mailbox
 import hashlib
 
 
+verbose = False
+
+
 def print_usage(path):
     print("Usage: %s [MAILDIR]" % path)
 
@@ -44,9 +47,12 @@ def remove(mbox, to_remove, dry_run=False):
         for key, hashsum in to_remove.items():
             message = mbox.get(key)
             action = "deleting"
+            info = ""
             if dry_run:
-                action = "would be deleted"
-            print("  %s: \"%s\" (%s bytes, %s)" % (action, message['Subject'], message['Content-Length'], hashsum))
+                action = "would delete"
+            if verbose:
+                info = " (%s bytes, sha256: %s)" % (message['Content-Length'], hashsum)
+            print("  %s %s: \"%s\"%s" % (action, message['Message-Id'], message['Subject'], info))
             if not dry_run:
                 mbox.remove(key)
     finally:
@@ -98,8 +104,11 @@ def prune(mbox, dry_run=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--dry-run", help="perform a trial run with no changes made", action="store_true")
+    parser.add_argument("-v", "--verbose", help="show verbose output", action="store_true")
     parser.add_argument("target_dirs", default=[], nargs="+")
     args = parser.parse_args()
+
+    verbose = args.verbose
 
     for target_dir in args.target_dirs:
         mbox = mailbox.Maildir(target_dir)
