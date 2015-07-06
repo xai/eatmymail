@@ -15,8 +15,8 @@
 # License along with this program; if not, write to the
 # Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 # Boston, MA 021110-1307, USA.
+import argparse
 
-import sys
 import mailbox
 import hashlib
 
@@ -37,19 +37,20 @@ def hash_content(message):
         return hashlib.sha256(content).hexdigest()
 
 
-def remove(mbox, to_remove):
+def remove(mbox, to_remove, dry_run=False):
     mbox.lock()
     try:
         for key, hashsum in to_remove.items():
             message = mbox.get(key)
             print("  deleting \"%s\" (%s bytes, %s)" % (message['Subject'], message['Content-Length'], hashsum))
-            mbox.remove(key)
+            if not dry_run:
+                mbox.remove(key)
     finally:
         mbox.flush()
         mbox.close()
 
 
-def prune(mbox):
+def prune(mbox, dry_run=False):
     messages = {}
     to_remove = {}
 
@@ -83,7 +84,7 @@ def prune(mbox):
                     for key in dupes[hashsum][1:]:
                         to_remove[key] = hashsum
 
-    remove(mbox, to_remove)
+    remove(mbox, to_remove, dry_run)
 
     for subdir in mbox.list_folders():
         print('Subdir found: %s', subdir)
@@ -91,10 +92,11 @@ def prune(mbox):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 1:
-        print_usage(sys.argv[0])
-        exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-n", "--dry-run", help="perform a trial run with no changes made", action="store_true")
+    parser.add_argument("target_dirs", default=[], nargs="+")
+    args = parser.parse_args()
 
-    for target in sys.argv[1:]:
-        mbox = mailbox.Maildir(target)
-        prune(mbox)
+    for target_dir in args.target_dirs:
+        mbox = mailbox.Maildir(target_dir)
+        prune(mbox, args.dry_run)
