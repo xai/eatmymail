@@ -43,7 +43,10 @@ def remove(mbox, to_remove, dry_run=False):
     try:
         for key, hashsum in to_remove.items():
             message = mbox.get(key)
-            print("  deleting \"%s\" (%s bytes, %s)" % (message['Subject'], message['Content-Length'], hashsum))
+            action = "deleting"
+            if dry_run:
+                action = "would be deleted"
+            print("  %s: \"%s\" (%s bytes, %s)" % (action, message['Subject'], message['Content-Length'], hashsum))
             if not dry_run:
                 mbox.remove(key)
     finally:
