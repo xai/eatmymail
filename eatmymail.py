@@ -23,6 +23,7 @@ import hashlib
 
 KBFACTOR = float(1<<10)
 
+fast = False
 verbose = False
 deleted_messages = 0
 deleted_bytes = 0
@@ -86,21 +87,24 @@ def prune(mbox, dry_run=False):
         except TypeError:
             pass
 
-    # Check duplicate message ids
+    # Check duplicate message ids as a first heuristic
     # this is reasonably fast
     for message_id in messages:
         if len(messages[message_id]) > 1:
             dupes = {}
             for key in messages[message_id]:
                 message = mbox.get(key)
-                hashsum = hash_content(message)
+                hashsum = "-"
+                if not fast:
+                    hashsum = hash_content(message)
                 if hashsum in dupes:
                     dupes[hashsum].append(key)
                 else:
                     dupes[hashsum] = [key]
 
-            # Check duplicate hashes
+            # Check duplicate hashes to be safe
             # this should be reasonably precise
+            # Please note that if fast is True, there were no real hashes computed
             for hashsum in dupes:
                 if len(dupes[hashsum]) > 1:
                     for key in dupes[hashsum][1:]:
@@ -115,12 +119,14 @@ def prune(mbox, dry_run=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("-f", "--fast", help="use fast heuristic based on message IDs (unsafe)", action="store_true")
     parser.add_argument("-n", "--dry-run", help="perform a trial run with no changes made", action="store_true")
     parser.add_argument("-v", "--verbose", help="show verbose output", action="store_true")
     parser.add_argument("target_dirs", default=[], nargs="+")
     args = parser.parse_args()
 
     verbose = args.verbose
+    fast = args.fast
 
     for target_dir in args.target_dirs:
         mbox = mailbox.Maildir(target_dir)
