@@ -62,7 +62,7 @@ def remove(mbox, to_remove, dry_run=False):
             print("  %s %s: \"%s\"%s" % (action, message['Message-Id'], message['Subject'], info))
             deleted_messages += 1
             if message['Content-Length'] is not None:
-                deleted_bytes += message['Content-Length']
+                deleted_bytes += int(message['Content-Length'])
             if not dry_run:
                 mbox.remove(key)
     finally:
