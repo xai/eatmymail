@@ -21,7 +21,7 @@ import argparse
 import mailbox
 import hashlib
 
-KBFACTOR = float(1<<10)
+KBFACTOR = float(1 << 10)
 
 fast = False
 verbose = False
@@ -113,7 +113,7 @@ def prune(mbox, dry_run=False):
     remove(mbox, to_remove, dry_run)
 
     for subdir in mbox.list_folders():
-        print('Subdir found: %s', subdir)
+        print("Subdir found: %s", subdir)
         prune(subdir)
 
 
