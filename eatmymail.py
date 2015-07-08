@@ -21,8 +21,11 @@ import argparse
 import mailbox
 import hashlib
 
+KBFACTOR = float(1<<10)
 
 verbose = False
+deleted_messages = 0
+deleted_bytes = 0
 
 
 def print_usage(path):
@@ -42,6 +45,9 @@ def hash_content(message):
 
 
 def remove(mbox, to_remove, dry_run=False):
+    global deleted_messages
+    global deleted_bytes
+
     mbox.lock()
     try:
         for key, hashsum in to_remove.items():
@@ -53,6 +59,9 @@ def remove(mbox, to_remove, dry_run=False):
             if verbose:
                 info = " (%s bytes, sha256: %s)" % (message['Content-Length'], hashsum)
             print("  %s %s: \"%s\"%s" % (action, message['Message-Id'], message['Subject'], info))
+            deleted_messages += 1
+            if message['Content-Length'] is not None:
+                deleted_bytes += message['Content-Length']
             if not dry_run:
                 mbox.remove(key)
     finally:
@@ -116,3 +125,6 @@ if __name__ == "__main__":
     for target_dir in args.target_dirs:
         mbox = mailbox.Maildir(target_dir)
         prune(mbox, args.dry_run)
+
+    print()
+    print("Deleted %d messages (%dK)." % (deleted_messages, int(deleted_bytes/KBFACTOR)))
