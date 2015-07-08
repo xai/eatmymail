@@ -69,10 +69,13 @@ def prune(mbox, dry_run=False):
         if message_id is None:
             continue
 
-        if message_id in messages:
-            messages[message_id].append(key)
-        else:
-            messages[message_id] = [key]
+        try:
+            if message_id in messages:
+                    messages[message_id].append(key)
+            else:
+                    messages[message_id] = [key]
+        except TypeError:
+            pass
 
     # Check duplicate message ids
     # this is reasonably fast
