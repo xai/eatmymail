@@ -17,6 +17,7 @@
 # Boston, MA 021110-1307, USA.
 
 import argparse
+import multiprocessing
 from multiprocessing import Process, Value, Lock
 
 import mailbox
@@ -152,10 +153,13 @@ if __name__ == "__main__":
     fast = args.fast
 
     counter = Counter()
+    num_cores = multiprocessing.cpu_count()
     procs = [Process(target=prune, args=(mailbox.Maildir(target_dir), counter, args.dry_run)) for target_dir in args.target_dirs]
 
-    for p in procs: p.start()
-    for p in procs: p.join()
+    # split processes into chunks depending on number of cores available
+    for i in range(0, len(procs), 2*num_cores):
+        for p in procs[i:i+2*num_cores]: p.start()
+        for p in procs[i:i+2*num_cores]: p.join()
 
     print()
     print("Deleted %d messages (%dK)." % (counter.get_deleted_messages(), int(counter.get_deleted_bytes()/KBFACTOR)))
