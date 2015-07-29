@@ -18,17 +18,21 @@
 
 import argparse
 import multiprocessing
-from multiprocessing import Process, Value, Lock
+import os
+from multiprocessing import Process, Value, Lock, Queue
+from queue import Empty
 
 import mailbox
 import hashlib
 
 
 class Counter(object):
-    def __init__(self, del_messages=0, del_bytes=0):
+
+
+    def __init__(self, lock, del_messages=0, del_bytes=0):
+        self.lock = lock
         self.del_messages = Value('i', del_messages)
         self.del_bytes = Value('i', del_bytes)
-        self.lock = Lock()
 
 
     def add_deleted(self, del_messages, del_bytes):
@@ -141,6 +145,18 @@ def prune(mbox, counter, dry_run=False):
         prune(subdir)
 
 
+def process(queue, counter, dry_run=False):
+    if verbose:
+        print("Started process %d" % os.getpid())
+
+    while not queue.empty():
+        try:
+            target_dir = queue.get(False)
+            prune(mailbox.Maildir(target_dir), counter, dry_run)
+        except Empty:
+            pass
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--fast", help="use fast heuristic based on message IDs (unsafe)", action="store_true")
@@ -152,14 +168,22 @@ if __name__ == "__main__":
     verbose = args.verbose
     fast = args.fast
 
-    counter = Counter()
+    counter = Counter(Lock())
     num_cores = multiprocessing.cpu_count()
-    procs = [Process(target=prune, args=(mailbox.Maildir(target_dir), counter, args.dry_run)) for target_dir in args.target_dirs]
 
-    # split processes into chunks depending on number of cores available
-    for i in range(0, len(procs), 2*num_cores):
-        for p in procs[i:i+2*num_cores]: p.start()
-        for p in procs[i:i+2*num_cores]: p.join()
+    queue = Queue()
+    for target_dir in args.target_dirs:
+        queue.put(target_dir)
+
+    procs = []
+    for i in range(num_cores):
+        procs.append(Process(target=process, args=(queue, counter, args.dry_run)))
+
+    for p in procs:
+        p.start()
+
+    for p in procs:
+        p.join()
 
     print()
     print("Deleted %d messages (%dK)." % (counter.get_deleted_messages(), int(counter.get_deleted_bytes()/KBFACTOR)))
