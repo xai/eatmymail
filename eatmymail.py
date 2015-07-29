@@ -17,16 +17,44 @@
 # Boston, MA 021110-1307, USA.
 
 import argparse
+import multiprocessing
+import os
+from multiprocessing import Process, Value, Lock, Queue
+from queue import Empty
 
 import mailbox
 import hashlib
+
+
+class Counter(object):
+
+
+    def __init__(self, lock, del_messages=0, del_bytes=0):
+        self.lock = lock
+        self.del_messages = Value('i', del_messages)
+        self.del_bytes = Value('i', del_bytes)
+
+
+    def add_deleted(self, del_messages, del_bytes):
+        with self.lock:
+            self.del_messages.value += del_messages
+            self.del_bytes.value += del_bytes
+
+
+    def get_deleted_messages(self):
+        with self.lock:
+            return self.del_messages.value
+
+
+    def get_deleted_bytes(self):
+        with self.lock:
+            return self.del_bytes.value
+
 
 KBFACTOR = float(1 << 10)
 
 fast = False
 verbose = False
-deleted_messages = 0
-deleted_bytes = 0
 
 
 def print_usage(path):
@@ -45,9 +73,7 @@ def hash_content(message):
         return hashlib.sha256(content).hexdigest()
 
 
-def remove(mbox, to_remove, dry_run=False):
-    global deleted_messages
-    global deleted_bytes
+def remove(mbox, to_remove, counter, dry_run=False):
 
     mbox.lock()
     try:
@@ -60,9 +86,11 @@ def remove(mbox, to_remove, dry_run=False):
             if verbose:
                 info = " (%s bytes, sha256: %s)" % (message['Content-Length'], hashsum)
             print("  %s %s: \"%s\"%s" % (action, message['Message-Id'], message['Subject'], info))
-            deleted_messages += 1
+            deleted_bytes = 0
             if message['Content-Length'] is not None:
-                deleted_bytes += int(message['Content-Length'])
+                deleted_bytes = int(message['Content-Length'])
+
+            counter.add_deleted(1, deleted_bytes)
             if not dry_run:
                 mbox.remove(key)
     finally:
@@ -70,7 +98,7 @@ def remove(mbox, to_remove, dry_run=False):
         mbox.close()
 
 
-def prune(mbox, dry_run=False):
+def prune(mbox, counter, dry_run=False):
     messages = {}
     to_remove = {}
 
@@ -110,11 +138,23 @@ def prune(mbox, dry_run=False):
                     for key in dupes[hashsum][1:]:
                         to_remove[key] = hashsum
 
-    remove(mbox, to_remove, dry_run)
+    remove(mbox, to_remove, counter, dry_run)
 
     for subdir in mbox.list_folders():
         print("Subdir found: %s", subdir)
         prune(subdir)
+
+
+def process(queue, counter, dry_run=False):
+    if verbose:
+        print("Started process %d" % os.getpid())
+
+    while not queue.empty():
+        try:
+            target_dir = queue.get(False)
+            prune(mailbox.Maildir(target_dir), counter, dry_run)
+        except Empty:
+            pass
 
 
 if __name__ == "__main__":
@@ -128,9 +168,22 @@ if __name__ == "__main__":
     verbose = args.verbose
     fast = args.fast
 
+    counter = Counter(Lock())
+    num_cores = multiprocessing.cpu_count()
+
+    queue = Queue()
     for target_dir in args.target_dirs:
-        mbox = mailbox.Maildir(target_dir)
-        prune(mbox, args.dry_run)
+        queue.put(target_dir)
+
+    procs = []
+    for i in range(num_cores):
+        procs.append(Process(target=process, args=(queue, counter, args.dry_run)))
+
+    for p in procs:
+        p.start()
+
+    for p in procs:
+        p.join()
 
     print()
-    print("Deleted %d messages (%dK)." % (deleted_messages, int(deleted_bytes/KBFACTOR)))
+    print("Deleted %d messages (%dK)." % (counter.get_deleted_messages(), int(counter.get_deleted_bytes()/KBFACTOR)))
