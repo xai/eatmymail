@@ -185,5 +185,6 @@ if __name__ == "__main__":
     for p in procs:
         p.join()
 
-    print()
-    print("Deleted %d messages (%dK)." % (counter.get_deleted_messages(), int(counter.get_deleted_bytes()/KBFACTOR)))
+    if verbose or counter.get_deleted_messages() > 0:
+        print()
+        print("Deleted %d messages (%dK)." % (counter.get_deleted_messages(), int(counter.get_deleted_bytes()/KBFACTOR)))
