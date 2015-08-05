@@ -21,6 +21,7 @@ import multiprocessing
 import os
 from multiprocessing import Process, Value, Lock, Queue
 from queue import Empty
+from time import perf_counter
 
 import mailbox
 import hashlib
@@ -29,16 +30,28 @@ import hashlib
 class Counter(object):
 
 
-    def __init__(self, lock, del_messages=0, del_bytes=0):
+    def __init__(self, lock, del_messages=0, del_bytes=0, messages=0, mboxes=0):
         self.lock = lock
         self.del_messages = Value('i', del_messages)
         self.del_bytes = Value('i', del_bytes)
+        self.messages  = Value('i', messages)
+        self.mboxes  = Value('i', mboxes)
 
 
     def add_deleted(self, del_messages, del_bytes):
         with self.lock:
             self.del_messages.value += del_messages
             self.del_bytes.value += del_bytes
+
+
+    def add_messages(self, messages):
+        with self.lock:
+            self.messages.value += messages
+
+
+    def add_mboxes(self, mboxes):
+        with self.lock:
+            self.mboxes.value += mboxes
 
 
     def get_deleted_messages(self):
@@ -49,6 +62,16 @@ class Counter(object):
     def get_deleted_bytes(self):
         with self.lock:
             return self.del_bytes.value
+
+
+    def get_messages(self):
+        with self.lock:
+            return self.messages.value
+
+
+    def get_mboxes(self):
+        with self.lock:
+            return self.mboxes.value
 
 
 KBFACTOR = float(1 << 10)
@@ -102,6 +125,8 @@ def prune(mbox, counter, dry_run=False):
     messages = {}
     to_remove = {}
 
+    counter.add_mboxes(1)
+
     for key, message in mbox.iteritems():
         message_id = message['Message-Id']
         if message_id is None:
@@ -114,6 +139,8 @@ def prune(mbox, counter, dry_run=False):
                     messages[message_id] = [key]
         except TypeError:
             pass
+
+    counter.add_messages(len(messages))
 
     # Check duplicate message ids as a first heuristic
     # this is reasonably fast
@@ -179,6 +206,8 @@ if __name__ == "__main__":
     for i in range(num_cores):
         procs.append(Process(target=process, args=(queue, counter, args.dry_run)))
 
+    start_time = perf_counter()
+
     for p in procs:
         p.start()
 
@@ -186,5 +215,10 @@ if __name__ == "__main__":
         p.join()
 
     if verbose or counter.get_deleted_messages() > 0:
+        elapsed_time = perf_counter() - start_time
+        elapsed_min = elapsed_time/60
+        elapsed_sec = elapsed_time%60
         print()
+        print("Processed %d mailboxes with %d mails." % (counter.get_mboxes(), counter.get_messages()))
         print("Deleted %d messages (%dK)." % (counter.get_deleted_messages(), int(counter.get_deleted_bytes()/KBFACTOR)))
+        print("Finished after %dm %ds." % (elapsed_min, elapsed_sec))
