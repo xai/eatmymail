@@ -114,6 +114,7 @@ def remove(mbox, to_remove, counter, dry_run=False):
                 mbox.remove(key)
     finally:
         mbox.flush()
+        mbox.unlock()
         mbox.close()
 
 
