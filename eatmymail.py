@@ -168,7 +168,7 @@ def prune(mbox, counter, dry_run=False):
 
     for subdir in mbox.list_folders():
         print("Subdir found: %s", subdir)
-        prune(subdir)
+        prune(subdir, counter)
 
 
 def process(queue, counter, dry_run=False):
