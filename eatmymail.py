@@ -208,7 +208,8 @@ if __name__ == "__main__":
 
     queue = Queue()
     for target_dir in args.target_dirs:
-        queue.put(target_dir)
+        if os.path.isdir(target_dir):
+            queue.put(target_dir)
 
     procs = []
     for i in range(num_cores):
