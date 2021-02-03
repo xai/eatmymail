@@ -131,9 +131,9 @@ def prune(mbox, counter, dry_run=False):
 
         try:
             if message_id in messages:
-                    messages[message_id].append(key)
+                messages[message_id].append(key)
             else:
-                    messages[message_id] = [key]
+                messages[message_id] = [key]
         except TypeError:
             pass
 
