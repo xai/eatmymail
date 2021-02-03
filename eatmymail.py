@@ -178,7 +178,18 @@ def process(queue, counter, dry_run=False):
     while not queue.empty():
         try:
             target_dir = queue.get(False)
-            prune(mailbox.Maildir(target_dir), counter, dry_run)
+            required_dirs = ["cur", "new", "tmp"]
+            is_valid_maildir = True
+
+            for subdir in required_dirs:
+                if not os.path.exists(os.path.join(target_dir, subdir)):
+                    is_valid_maildir = False
+                    break
+
+            if is_valid_maildir:
+                prune(mailbox.Maildir(target_dir), counter, dry_run)
+            else:
+                print("Skipping invalid Maildir '%s'" % target_dir)
         except Empty:
             pass
 
