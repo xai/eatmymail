@@ -22,9 +22,15 @@ import os
 from multiprocessing import Process, Value, Lock, Queue
 from queue import Empty
 from time import perf_counter
+from enum import Enum
 
 import mailbox
 import hashlib
+
+
+class Mode(Enum):
+    CHECK = 1
+    PRUNE = 2
 
 
 class Counter(object):
@@ -171,7 +177,34 @@ def prune(mbox, counter, dry_run=False):
         prune(subdir, counter)
 
 
-def process(queue, counter, dry_run=False):
+def validate(mbox, path, sep=';'):
+    mandatory_headers = ['date', 'from']
+    common_headers = ['message-id', 'subject']
+
+    for key, message in mbox.iteritems():
+        for header in mandatory_headers:
+            if header not in message:
+                print("Error%sno %s%s%s" % (sep, header, sep,
+                                            os.path.join(path,
+                                                         mbox._toc[key])))
+
+        for header in common_headers:
+            if header not in message:
+                print("Warning%sno %s%s%s" % (sep, header, sep,
+                                              os.path.join(path,
+                                                           mbox._toc[key])))
+
+        for defect in message.defects:
+            print("ParseWarning%s%s%s%s" % (sep, type(defect).__name__, sep,
+                                            os.path.join(path,
+                                                         mbox._toc[key])))
+
+    for subdir in mbox.list_folders():
+        print("Subdir found: %s", subdir)
+        validate(subdir, path + os.sep + subdir, sep)
+
+
+def process(queue, counter, mode, dry_run=False, sep=';'):
     if verbose:
         print("Started process %d" % os.getpid())
 
@@ -186,16 +219,25 @@ def process(queue, counter, dry_run=False):
                     is_valid_maildir = False
                     break
 
-            if is_valid_maildir:
-                prune(mailbox.Maildir(target_dir), counter, dry_run)
-            else:
+            if not is_valid_maildir:
                 print("Skipping invalid Maildir '%s'" % target_dir)
+                continue
+
+            if mode == Mode.CHECK:
+                validate(mailbox.Maildir(target_dir), target_dir, sep)
+            elif mode == Mode.PRUNE:
+                prune(mailbox.Maildir(target_dir), counter, dry_run)
+
         except Empty:
             pass
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--check",
+                        help="check for invalid mails, " +
+                        "does not delete anything",
+                        action="store_true")
     parser.add_argument("-f", "--fast",
                         help="use fast heuristic based on message IDs " +
                         "(unsafe)",
@@ -214,6 +256,8 @@ if __name__ == "__main__":
     verbose = args.verbose
     fast = args.fast
 
+    mode = Mode.CHECK if args.check else Mode.PRUNE
+
     counter = Counter(Lock())
     num_cores = multiprocessing.cpu_count()
 
@@ -225,7 +269,7 @@ if __name__ == "__main__":
     procs = []
     for i in range(num_cores):
         procs.append(Process(target=process,
-                             args=(queue, counter, args.dry_run)))
+                             args=(queue, counter, mode, args.dry_run)))
 
     start_time = perf_counter()
 
