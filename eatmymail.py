@@ -34,9 +34,7 @@ class Mode(Enum):
 
 
 class Counter(object):
-    def __init__(
-        self, lock, del_messages=0, del_bytes=0, messages=0, mboxes=0
-    ):
+    def __init__(self, lock, del_messages=0, del_bytes=0, messages=0, mboxes=0):
         self.lock = lock
         self.del_messages = Value("i", del_messages)
         self.del_bytes = Value("i", del_bytes)
@@ -128,7 +126,7 @@ def remove(mbox, to_remove, counter, dry_run=False):
         mbox.close()
 
 
-def prune(mbox, counter, dry_run=False):
+def prune(mbox, counter, dry_run=False, input=None):
     messages = {}
     to_remove = {}
 
@@ -176,9 +174,30 @@ def prune(mbox, counter, dry_run=False):
 
     remove(mbox, to_remove, counter, dry_run)
 
+    if input:
+        input_remove = {}
+        for key, message in input.iteritems():
+            message_id = message["Message-Id"]
+            if message_id is None:
+                continue
+
+            try:
+                hashsum = "-"
+                if not fast:
+                    hashsum = hash_content(message)
+                if message_id in messages:
+                    if key in input_remove:
+                        input_remove[key].append(hashsum)
+                    else:
+                        input_remove[key] = [hashsum]
+            except TypeError:
+                pass
+
+        remove(input, input_remove, counter, dry_run)
+
     for subdir in mbox.list_folders():
         print("Subdir found: %s", subdir)
-        prune(subdir, counter, dry_run)
+        prune(subdir, counter, dry_run, input)
 
 
 def validate(mbox, path, sep=";"):
@@ -216,7 +235,7 @@ def validate(mbox, path, sep=";"):
         validate(subdir, path + os.sep + subdir, sep)
 
 
-def process(queue, counter, mode, dry_run=False, sep=";"):
+def process(queue, counter, mode, dry_run=False, input=None, sep=";"):
     if verbose:
         print("Started process %d" % os.getpid())
 
@@ -238,7 +257,7 @@ def process(queue, counter, mode, dry_run=False, sep=";"):
             if mode == Mode.CHECK:
                 validate(mailbox.Maildir(target_dir), target_dir, sep)
             elif mode == Mode.PRUNE:
-                prune(mailbox.Maildir(target_dir), counter, dry_run)
+                prune(mailbox.Maildir(target_dir), counter, dry_run, input)
 
         except Empty:
             pass
@@ -259,6 +278,12 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "-i",
+        "--input",
+        help="Provide input maildir that is also compared to all maildirs",
+        type=str,
+    )
+    parser.add_argument(
         "-n",
         "--dry-run",
         help="perform a trial run with no changes made",
@@ -275,6 +300,8 @@ if __name__ == "__main__":
 
     mode = Mode.CHECK if args.check else Mode.PRUNE
 
+    input = mailbox.Maildir(args.input) if args.input else None
+
     counter = Counter(Lock())
     num_cores = multiprocessing.cpu_count()
 
@@ -286,7 +313,7 @@ if __name__ == "__main__":
     procs = []
     for i in range(num_cores):
         procs.append(
-            Process(target=process, args=(queue, counter, mode, args.dry_run))
+            Process(target=process, args=(queue, counter, mode, args.dry_run, input))
         )
 
     start_time = perf_counter()
