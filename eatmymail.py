@@ -178,7 +178,7 @@ def prune(mbox, counter, dry_run=False):
 
     for subdir in mbox.list_folders():
         print("Subdir found: %s", subdir)
-        prune(subdir, counter)
+        prune(subdir, counter, dry_run)
 
 
 def validate(mbox, path, sep=";"):
